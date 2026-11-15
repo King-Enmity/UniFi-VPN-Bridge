@@ -34,6 +34,18 @@ v0.2 has a CLI for *declaring* one or several ingress profiles and discovering e
 
 **Not yet implemented:** actually routing VPN clients, source NAT, kill switch, DNS control, IPv6 policy, live tunnel verification, boot persistence, interface auto-discovery, hardware compatibility testing.
 
+
+## Guided setup (development preview)
+
+**Start here:** [Step-by-step getting started guide](docs/GETTING_STARTED.md).
+
+There are two supported workflows for the current **read-only diagnostics**:
+
+- Manual: inspect VPN interfaces on the gateway and run the `doctor` CLI yourself.
+- Optional wizard: run `bash scripts/setup-wizard.sh` from your own computer. It connects over SSH, lists interface names, asks which incoming VPN server should use which outbound VPN client, and runs the existing read-only diagnostic. Use `--help` for non-interactive mode.
+
+**Important:** The wizard does *not* configure VPN-to-VPN forwarding, install firewall rules, provide a kill switch, or protect internet traffic. Automatic live setup is a future feature that requires real hardware validation before release. This wizard is on `development` only, not the stable `main` branch.
+
 ## Examples
 
 Run from the repository directory on a laptop. SSH authenticates to your gateway; the script itself has no outbound network calls and is streamed to Bash without being installed. Replace `192.168.1.1` and ALL interface names with those verified on your device.
