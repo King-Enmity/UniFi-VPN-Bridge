@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# UniFi VPN Bridge v0.2 — read-only discovery for UniFi Teleport, WireGuard and OpenVPN.
+# SPDX-License-Identifier: MIT
+# This program does not modify routes, firewall rules, DNS, files, services or VPNs.
+set -euo pipefail
+
+VERSION=0.2.0
+COMMAND=
+DEFAULT_EGRESS=
+LEGACY_SOURCE=tlprt0
+LEGACY_SOURCE_GIVEN=0
+MODE=
+declare -a TYPES=() INGRESS=() EGRESS=()
+
+usage() {
+  cat <<'HELP'
+UniFi VPN Bridge v0.2 (READ ONLY — does not route or protect traffic)
+
+Usage:
+  unifi-vpn-bridge doctor --ingress TYPE:IFACE [--ingress TYPE:IFACE ...] --egress IFACE
+  unifi-vpn-bridge plan   --ingress TYPE:IFACE [--ingress TYPE:IFACE ...] --egress IFACE
+  unifi-vpn-bridge doctor --route TYPE:INGRESS:EGRESS [--route TYPE:INGRESS:EGRESS ...]
+  unifi-vpn-bridge plan   --route TYPE:INGRESS:EGRESS [--route TYPE:INGRESS:EGRESS ...]
+
+TYPE is one of: teleport, wireguard, openvpn (incoming VPN *server* type).
+The egress is an existing UniFi-managed WireGuard or OpenVPN VPN *client*.
+
+Examples (replace all interface names with ones verified on your gateway):
+  unifi-vpn-bridge doctor --ingress teleport:tlprt0 --ingress wireguard:wgsrv1 \
+    --ingress openvpn:tun0 --egress tunovpnc1
+  unifi-vpn-bridge doctor --route teleport:tlprt0:tunovpnc1 \
+    --route wireguard:wgsrv1:wgclt4 --route openvpn:tun0:wgclt4
+
+Compatibility: --source tlprt0 --egress tunovpnc1 means Teleport only.
+Run `ip -o link show` on the gateway to find actual interfaces.
+
+No installer, downloader, daemon, DNS changes, kill switch, IPv6 protection,
+firewall commands or secret access. This is *discovery only*.
+HELP
+}
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+valid_iface() {
+  local n=$1
+  [[ ${#n} -ge 1 && ${#n} -le 15 && $n =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]
+}
+valid_type() { [[ $1 == teleport || $1 == wireguard || $1 == openvpn ]]; }
+add_ingress() {
+  local spec=$1 t i extra
+  # A colon is deliberately invalid inside interface names. Reject stray fields.
+  [[ $spec == *:* && $spec != *:*:* ]] || fail "expected TYPE:IFACE, got '$spec'"
+  IFS=: read -r t i extra <<< "$spec"
+  [[ -z ${extra:-} && -n $t && -n $i ]] || fail "invalid TYPE:IFACE '$spec'"
+  valid_type "$t" || fail "unsupported ingress type '$t' (use teleport, wireguard, openvpn)"
+  valid_iface "$i" || fail "invalid ingress interface '$i'"
+  TYPES+=("$t"); INGRESS+=("$i")
+  EGRESS+=("")
+}
+add_route() {
+  local spec=$1 t i e extra
+  [[ $spec == *:*:* && $spec != *:*:*:* ]] || fail "expected TYPE:INGRESS:EGRESS, got '$spec'"
+  IFS=: read -r t i e extra <<< "$spec"
+  [[ -z ${extra:-} && -n $t && -n $i && -n $e ]] || fail "expected TYPE:INGRESS:EGRESS, got '$spec'"
+  valid_type "$t" || fail "unsupported ingress type '$t' (use teleport, wireguard, openvpn)"
+  valid_iface "$i" || fail "invalid ingress interface '$i'"
+  valid_iface "$e" || fail "invalid egress interface '$e'"
+  TYPES+=("$t"); INGRESS+=("$i"); EGRESS+=("$e")
+}
+
+while (($#)); do
+  case "$1" in
+    doctor|plan)
+      [[ -z $COMMAND ]] || fail 'specify exactly one subcommand'
+      COMMAND=$1; shift ;;
+    --ingress)
+      [[ $# -ge 2 ]] || fail 'missing value for --ingress'
+      [[ -z $MODE || $MODE == shared ]] || fail 'do not mix --ingress with --route'
+      MODE=shared; add_ingress "$2"; shift 2 ;;
+    --route)
+      [[ $# -ge 2 ]] || fail 'missing value for --route'
+      [[ -z $MODE || $MODE == independent ]] || fail 'do not mix --route with --ingress'
+      MODE=independent; add_route "$2"; shift 2 ;;
+    --source)
+      [[ $# -ge 2 ]] || fail 'missing value for --source'
+      [[ $LEGACY_SOURCE_GIVEN -eq 0 ]] || fail 'duplicate --source'
+      LEGACY_SOURCE_GIVEN=1; LEGACY_SOURCE=$2; shift 2 ;;
+    --egress)
+      [[ $# -ge 2 ]] || fail 'missing value for --egress'
+      [[ -z $DEFAULT_EGRESS ]] || fail 'duplicate --egress'
+      DEFAULT_EGRESS=$2; shift 2 ;;
+    -h|--help|help) usage; exit 0 ;;
+    --version) printf '%s\n' "$VERSION"; exit 0 ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+done
+[[ $COMMAND == doctor || $COMMAND == plan ]] || { usage >&2; exit 2; }
+if [[ $MODE == independent ]]; then
+  [[ -z $DEFAULT_EGRESS && $LEGACY_SOURCE_GIVEN -eq 0 ]] || fail '--route cannot be combined with --egress/--source'
+else
+  [[ -n $DEFAULT_EGRESS ]] || fail '--egress is required with --ingress or --source'
+  valid_iface "$DEFAULT_EGRESS" || fail "invalid egress interface '$DEFAULT_EGRESS'"
+  if [[ -z $MODE ]]; then
+    valid_iface "$LEGACY_SOURCE" || fail "invalid source interface '$LEGACY_SOURCE'"
+    TYPES+=(teleport); INGRESS+=("$LEGACY_SOURCE"); EGRESS+=("$DEFAULT_EGRESS")
+  else
+    [[ $LEGACY_SOURCE_GIVEN -eq 0 ]] || fail '--source cannot be combined with --ingress'
+    for k in "${!TYPES[@]}"; do EGRESS[k]=$DEFAULT_EGRESS; done
+  fi
+fi
+((${#TYPES[@]} >= 1 && ${#TYPES[@]} <= 12)) || fail 'specify between 1 and 12 ingress profiles'
+for k in "${!TYPES[@]}"; do
+  [[ ${INGRESS[k]} != "${EGRESS[k]}" ]] || fail "source and egress must differ (${INGRESS[k]})"
+  for ((j=0; j<k; j++)); do
+    [[ ${INGRESS[j]} != "${INGRESS[k]}" ]] || fail "duplicate ingress interface ${INGRESS[k]}"
+  done
+done
+command -v ip >/dev/null 2>&1 || fail 'missing ip command'
+command -v awk >/dev/null 2>&1 || fail 'missing awk command'
+
+printf 'UniFi VPN Bridge v%s — %s (READ ONLY)\n' "$VERSION" "$COMMAND"
+printf '  Inbound profiles: %d\n' "${#TYPES[@]}"
+# Validate all configured interfaces before policy analysis. No guessing names.
+for k in "${!TYPES[@]}"; do
+  t=${TYPES[k]}; src=${INGRESS[k]}; out=${EGRESS[k]}
+  printf '  %-9s incoming %-15s -> outgoing %s\n' "$t" "$src" "$out"
+  ip -o link show dev "$src" >/dev/null 2>&1 || fail "incoming $t interface '$src' not found; verify actual interface and active server/client"
+  ip -o link show dev "$out" >/dev/null 2>&1 || fail "outgoing VPN client interface '$out' not found"
+done
+
+RULES=$(ip -4 rule show) || fail 'unable to read IPv4 policy rules'
+[[ -n $RULES ]] || fail 'IPv4 policy rule listing is empty'
+# Only unscoped rules of the form 'from all fwmark <mark> lookup <table>'.
+# A rule limited by source, destination, incoming interface, port, etc. is not
+# evidence that arbitrary packets from these VPN servers will match.
+CANDIDATES=$(printf '%s\n' "$RULES" | awk '
+  {
+    from_all=0; mark=""; table=""; restricted=0
+    for (i=1;i<=NF;i++) {
+      if ($i=="from") { if (i<NF && $(i+1)=="all") from_all=1; else restricted=1 }
+      if ($i=="fwmark" && i<NF) mark=$(i+1)
+      if ($i=="lookup" && i<NF) table=$(i+1)
+      if ($i=="iif" || $i=="oif" || $i=="to" || $i=="uidrange" ||
+          $i=="ipproto" || $i=="sport" || $i=="dport" || $i=="not" ||
+          $i=="goto" || $i=="l3mdev" || $i=="suppress_prefixlength" ||
+          $i=="tos" || $i=="dsfield" || $i=="tun_id" ||
+          $i=="suppress_ifgroup") restricted=1
+    }
+    if (from_all && !restricted && mark!="" && table!="") print mark "\t" table
+  }
+')
+
+# Find one matching candidate for a chosen egress. The data comes only from
+# read-only ip commands. Never execute it or source it as shell code.
+discover_egress() {
+  local target=$1 mark table routes count route
+  local matches=0 found_mark= found_table= found_route=
+  while IFS=$'\t' read -r mark table; do
+    [[ -n $mark && -n $table ]] || continue
+    [[ $mark =~ ^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)?$ ]] || continue
+    [[ $table =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || continue
+    routes=$(ip -4 route show table "$table" 2>/dev/null) || continue
+    [[ -n $routes ]] || continue
+    count=$(printf '%s\n' "$routes" | awk '$1=="default"{n++}END{print n+0}')
+    [[ $count == 1 ]] || continue
+    route=$(printf '%s\n' "$routes" | awk '$1=="default"{print}')
+    if printf '%s\n' "$route" | awk -v dev="$target" '
+      {found=0;for(i=1;i<NF;i++)if($i=="dev" && $(i+1)==dev)found=1; if(!found)exit 1}
+    '; then
+      ((matches+=1)); found_mark=$mark; found_table=$table; found_route=$route
+    fi
+  done <<< "$CANDIDATES"
+
+  if (( matches == 0 )); then
+    printf '  NOT READY: No unique unscoped IPv4 policy route via %s.\n' "$target"
+    return 3
+  fi
+  if (( matches > 1 )); then
+    printf '  AMBIGUOUS: %d policy rules could route through %s; refusing to guess.\n' "$matches" "$target"
+    return 3
+  fi
+  printf '  Candidate IPv4 mark %s -> table %s\n' "$found_mark" "$found_table"
+  printf '  Table default route: %s\n' "$found_route"
+  local probe
+  probe=$(ip -4 route get 1.1.1.1 mark "${found_mark%%/*}" 2>/dev/null) || probe=
+  if [[ -z $probe ]]; then
+    printf '  Gateway OUTPUT-path probe: unavailable (NOT a forwarding verdict)\n'
+  elif printf '%s\n' "$probe" | awk -v dev="$target" '
+      {for(i=1;i<NF;i++)if($i=="dev" && $(i+1)==dev)found=1} END{exit !found}
+    '; then
+    printf '  Gateway OUTPUT-path probe: selected %s (still NOT a forwarding verdict)\n' "$target"
+  else
+    printf '  WARNING: gateway OUTPUT-path probe did not select %s\n' "$target"
+  fi
+}
+
+result=0
+for k in "${!TYPES[@]}"; do
+  printf '\nPROFILE %s (inbound %s, egress %s)\n' "${TYPES[k]}:${INGRESS[k]}" "${INGRESS[k]}" "${EGRESS[k]}"
+  discover_egress "${EGRESS[k]}" || result=3
+done
+cat <<'WARN'
+
+SECURITY STATUS: NOT PROTECTED BY THIS TOOL
+  - No routing, NAT, firewall rules, or kill switches installed.
+  - A matching policy table is not proof of actual forwarded VPN traffic.
+  - DNS forwarding, IPv6 leakage, and tunnel-down behavior are unverified.
+  - Teleport, WireGuard, and OpenVPN *server* packet ingress may be handled
+    differently by UniFi. Each requires real-device packet-level validation.
+WARN
+if [[ $COMMAND == plan ]]; then
+  cat <<'PLAN'
+
+NEXT-PHASE DESIGN (NOT EXECUTED)
+  1. Verify actual ingress path, source networks and DNS behavior per protocol.
+  2. Stage fail-closed FORWARD guards before IPv4 steering and source NAT.
+  3. Apply only selected profiles, never touch non-VPN traffic or router SSH.
+  4. Verify packet egress, restart, disconnect, firewall reload and rollback.
+  5. Decide explicit gateway-DNS and IPv6 policies before a production release.
+PLAN
+fi
+if ((result != 0)); then
+  printf '\nRESULT: NOT READY / AMBIGUOUS (read-only)\n' >&2
+  exit "$result"
+fi
+printf '\nRESULT: DISCOVERY ONLY (no changes made)\n'
