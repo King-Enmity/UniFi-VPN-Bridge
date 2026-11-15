@@ -1,0 +1,16 @@
+name: Read-only diagnostic checks
+on:
+  push:
+    branches: [main, coming-soon, development]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Bash syntax
+        run: bash -n bin/unifi-vpn-bridge
+      - name: Offline tests
+        run: python3 -m unittest discover -s tests -v
