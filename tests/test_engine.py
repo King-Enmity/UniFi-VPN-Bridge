@@ -180,8 +180,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(sync.called)
 
     def test_all_mutations_use_argv_not_shell(self):
-        import inspect
-        source = inspect.getsource(bridge.Runner)
+        source = MODULE.read_text(encoding="utf-8")
         self.assertNotIn("shell=True", source)
         self.assertIn("subprocess.run(argv", source)
 
