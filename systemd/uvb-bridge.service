@@ -1,0 +1,15 @@
+[Unit]
+Description=UniFi VPN Bridge - experimental fwmark watchdog
+Documentation=https://github.com/King-Enmity/UniFi-VPN-Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/data/unifi-vpn-bridge/bridge.env
+ExecStart=/bin/bash /data/unifi-vpn-bridge/bridge-watch.sh watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
