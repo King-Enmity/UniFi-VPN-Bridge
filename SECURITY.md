@@ -1,28 +1,39 @@
-# Security model
+# Security scope and limitations
 
-UniFi VPN Bridge targets highly privileged UniFi gateways. A routing bug can leak public IPs, DNS, IPv6 traffic or interrupt admin access. **This starter is not an independently audited or operational VPN privacy solution.**
+**Privileged router modifications deserve caution.** UniFi VPN Bridge manages `iptables`, `ip6tables`, and a systemd watchdog on a UniFi gateway. A bad rule can interrupt remote access or reveal your ISP WAN address. The main branch contains the simplest hardware-observed IPv4 bridge method, **not an independently audited or fully leak-proof network privacy solution**.
 
-## v0.2 (read-only) guarantees by design
+## What was actually observed on a UDM Pro
 
-- No firewall or routing mutations: no `iptables`, `ip6tables`, `nft`, `ip rule add`, `ip route replace`, NAT, systemd or boot-hook actions.
-- No installation, telemetry, autoupdate, external software downloads, key/certificate reads or remote network connections from the diagnostic code.
-- All supplied `TYPE` strings must be from a three-item allowlist. Interface names must use a strict <=15-character allowlist and route-table names/marks are checked before being given to a read-only `ip` command.
-- No shell-based configuration, `eval`, Bash `source` of another file, or execution of text read from policy output.
-- Reports ambiguity rather than guessing the mark; a matched policy mark does NOT establish a protected forwarded path.
-- The provided tests use a stubbed `ip` program; test success is not an operational routing claim.
+- Incoming WireGuard server client traffic sent through a UniFi-managed outbound OpenVPN client after adding the exact outbound VPN's existing fwmark.
+- Scoped NAT and a source/interface-scoped IPv4 forwarding guard worked in the test.
+- LAN resources remained accessible.
+- The watchdog's duplicate-hook bug was discovered and corrected; repeated one-time reconciliation preserved one hook per project chain.
+- A normal router reboot restored an enabled/active systemd service and the corresponding project firewall hooks.
+
+These observations do not establish compatibility with every UniFi hardware/firmware combination.
 
 ## Remaining risks
 
-- Firmware-dependent forwarding paths may not follow the displayed gateway OUTPUT-path route.
-- A VPN gateway may send DNS requests via its ordinary WAN when responding for incoming VPN clients.
-- IPv6 is neither configured nor guarded by this diagnostic.
-- Route table data and interface state can change while being read (time-of-check/time-of-use).
-- OpenVPN server ingress may be represented differently across firmware versions or per-client sessions.
-- Anyone with shell access on the gateway can modify environment `PATH` or executables; a compromised device lies outside this threat model.
-- `ip -o link show` and routing diagnostic output may contain private addressing. Review and redact before sharing.
+1. **Router DNS:** If WireGuard peers point to the UDM Pro as DNS, router-originated upstream DNS can leave via normal WAN. FORWARD-only marking/guarding does not automatically apply to router-generated OUTPUT packets. This remains a high-priority roadmap feature.
+2. **Early boot and firewall reload gaps:** The systemd service may start after UniFi networking is already active. Even a 15-second watchdog cannot guarantee continuous fail-closed policy during early boot or rule replacement.
+3. **IPv6 outside the tunnel:** The ingress interface's IPv6 forwarding rule does not control a remote phone's separate local IPv6 route.
+4. **Multiple WANs, alternate egress, offloading:** The code and one UDM Pro field test do not establish complete safety for every alternate path or hardware acceleration behavior.
+5. **VPN disconnect/reconnect:** An absent UniFi mark leaves the guard intact, but not every outage/rule-change scenario has been tested with independent WAN packet captures.
+6. **Firewall order and firmware changes:** UniFi may reorder or replace rules; persistence across every firmware upgrade and daemon restart remains unverified.
+7. **Local exceptions:** The `br+` bridge interface allowance is topology-dependent. Do not use uncontrolled local-destination exemptions.
+8. **Unsupported ingress protocols:** Teleport and incoming OpenVPN server forwarding must be investigated separately.
+9. **Service configuration:** `bridge.env` is sourced in operator shells and loaded by systemd. Keep it root-owned, restricted to `0600`, containing only assignments you wrote and reviewed. Never execute downloaded text without reviewing it first.
 
-## Minimum gate for future `apply`
+## Operator safeguards
 
-No production traffic mutation until verified inbound and outbound forwarding for each protocol on supported hardware; guard-first, atomic replacement, explicit IPv6 and DNS policies, failure-state packet tests, independent test environments and rollback. Privileged installation must require a human confirmation and an auditable diff. No `curl | bash` or unpinned dependencies.
+- Have LAN/admin recovery access and a router backup before installing.
+- Configure the remote WireGuard client for IPv4 full-tunnel access if its internet should traverse the bridge.
+- Verify the exact UniFi policy mark, interface names, local CIDRs and source subnet on your own gateway.
+- First run read-only `doctor`; then `once`; only start the systemd service after observing real packet routing and LAN access.
+- Disconnect remote clients during reboot testing: there may be an unprotected boot interval.
+- Disable the systemd service before rollback, retain the forwarding guard until remote clients are disconnected, and **never flush UniFi-managed chains**.
+- Never post SSH keys, VPN profiles, public IPs, internal IP addresses, router hostnames, endpoint addresses, or unredacted packet traces to GitHub.
 
-Disclose security issues privately without posting tunnel credentials, SSH keys, client configurations or identifiable public IP addresses.
+## Disclosure and development
+
+Report security concerns privately when possible. The roadmap explicitly lists DNS, early-boot policy, failover, hardware-offload and firmware validation as unfinished. No telemetry, secret collection, downloaded execution or automatic software updates are required by the bridge.
