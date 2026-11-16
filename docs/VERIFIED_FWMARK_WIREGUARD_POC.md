@@ -169,3 +169,37 @@ The commands intentionally target only `UVB_FWPOC` rules. Never flush UniFi-mana
 Existing `bin/bridge-engine.py` remains an **unvalidated experimental prototype**, not an implementation of this field-tested minimal recipe. In particular, its currently fixed early `prohibit` fallback priority may preempt UniFi's later fwmark policy rule on some firmware. Do **not** treat that engine as ready to run on a working gateway.
 
 The `main` branch remains diagnostic-only. Promotion needs repeatable compatibility and failure-state evidence.
+
+
+## Follow-up field observation: scoped IPv4 forwarding kill-switch
+
+In the same UDM Pro test, an additional **dedicated filter/FORWARD guard** was installed for only the incoming WireGuard interface and remote client CIDR, before UniFi-managed forwarding rules. It was reported to block remote internet connectivity when the outbound VPN was unavailable. Packet counters after use showed matches for the outbound VPN and the final REJECT rule. This is a **limited IPv4 observation**, not a complete zero-leak certification.
+
+A generalized form of the tested rule ordering is:
+
+```sh
+# Replace every variable with locally validated values; commands are live changes.
+iptables -w -N UVB_KILLSWITCH
+iptables -w -A UVB_KILLSWITCH -o "$VPN_IF" -j RETURN
+iptables -w -A UVB_KILLSWITCH -o 'br+' -j RETURN
+iptables -w -A UVB_KILLSWITCH -j REJECT
+iptables -w -I FORWARD 1 -i "$WG_IF" -s "$WG_NET" -j UVB_KILLSWITCH
+```
+
+**Caution:** The `br+` wildcard represents a broad interface-name-based allowance, not an audited list of reachable local destination CIDRs; do **not** assume it preserves all network isolation goals. In this field run the `br+` rule had **zero packet matches** when the counters were shared, so LAN accessibility under VPN loss still needs explicit verification. `RETURN` continues to UniFi's other rules; it is not `ACCEPT`.
+
+This guard does **not** cover IPv6, traffic terminating at the router (`INPUT`), router-originated DNS (`OUTPUT`), software/hardware offload, firewall reload gaps, alternate VPN paths, or boot/reconnect. It must not be called a complete privacy kill switch. External VPN tunnel traffic to its provider still needs to reach the WAN as *encrypted transport*.
+
+The earlier single-WAN guard can remain installed during testing, but it is redundant for the normal IPv4 FORWARD path while this comprehensive-output-interface guard is correctly attached. Do not remove safeguards until packet-level checks—including tunnel-down and secondary WAN—confirm the replacement behavior.
+
+### Manual rollback for this separate guard
+
+Disconnect remote VPN clients first if removing protection may expose their internet traffic:
+
+```sh
+iptables -w -D FORWARD -i "$WG_IF" -s "$WG_NET" -j UVB_KILLSWITCH
+iptables -w -F UVB_KILLSWITCH
+iptables -w -X UVB_KILLSWITCH
+```
+
+Always inspect existing rules first and remove **only** rules this project installed. Do not flush UniFi-managed chains. This section is field documentation, not a reboot-persistent or fully tested installer.
