@@ -224,3 +224,26 @@ Recommended next **manual** validation:
 4. Keep IPv4 forwarding guard and mark/NAT rules unchanged while testing. Add reboot persistence only after independent disconnect, firewall-reload and rejoin tests.
 
 Do not disable system-wide IPv6 forwarding or overwrite global DNS configuration just to protect one VPN profile. More complete leak guarantees require client-side full-tunnel IPv6 policy and explicit upstream/resolver design.
+
+
+## Follow-up: DNS and IPv6 field observations (not yet leak-protected)
+
+On the same test gateway, the operator reported continued access to local resources while the scoped IPv4 kill switch was active. The `filter/FORWARD` IPv4 guard recorded both outbound VPN matches and rejected packets. This does **not** yet establish behavior during every VPN reconfiguration or failure.
+
+A read-only diagnostic showed:
+
+- The incoming WireGuard server interface had **no IPv6 address** in the interface listing.
+- The gateway's global IPv6 forwarding sysctl was **enabled**, while its displayed IPv6 routes had **no public default route**. The IPv6 filter FORWARD chain had no project-specific WireGuard guard.
+- WireGuard clients sent ordinary UDP DNS requests to the **gateway's WireGuard DNS listener**; the gateway returned replies. The upstream resolver's actual egress path was **not captured**. Thus router-originated upstream DNS can potentially bypass an IPv4 FORWARD-only VPN mark and kill switch.
+
+### Safer DNS experiment before implementing split DNS
+
+Do not change global WAN, LAN, or UniFi DNS settings merely to fix one remote VPN client's DNS.
+
+For **one remote WireGuard test client** only, temporarily change the client profile's `[Interface] DNS` to NordVPN's documented public IPv4 resolvers (`103.86.96.100`, `103.86.99.100`). Keep the client full-tunnel IPv4 destination policy, and verify real IPv4 packets to the chosen resolver arrive via WireGuard and leave via the assigned outbound VPN client interface. Check for any direct-WAN packets to that resolver and confirm DNS fails closed during an outbound VPN disconnect. Restore the original client DNS if the test fails.
+
+This choice may break internal hostnames even if direct local IP access still works. A later **split-DNS** implementation should preserve internal domain lookups using explicitly scoped local resolvers, but keep *public* DNS exits confined to the outbound VPN. The gateway's own DNS behavior, content-filter DNS interception, browser DoH, and DNS over TLS/QUIC need individual checks.
+
+**IPv6 caveat:** No IPv6 assigned to the server interface and no IPv6 default route on the gateway are not proof that remote devices cannot use their local IPv6 connectivity outside an IPv4-only WireGuard tunnel. Client-side routing policy must be checked separately. For defense in depth, the future implementation should explicitly reject IPv6 **forwarded from selected VPN ingress interfaces** until there is a verified IPv6-through-VPN design, and test the rule through reconnects and reloads. It must not disable IPv6 globally for other LANs.
+
+**Status remains developmental:** DNS, IPv6, failover/reload behavior, kill-switch durability, persistence and automated recovery have not yet passed end-to-end privacy testing.
