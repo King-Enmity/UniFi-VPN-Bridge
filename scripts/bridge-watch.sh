@@ -203,7 +203,7 @@ ensure_mark_chain() {
   else
     # Five exemptions is the original field-tested layout; the rule
     # count is derived so other networks can have fewer/more LANs.
-    ((#{rules[@]} == exception_count + 2)) || fail "unexpected $TAG layout; refusing to rewrite"
+    ((${#rules[@]} == exception_count + 2)) || fail "unexpected $TAG layout; refusing to rewrite"
     local idx=0 net expected
     for net in "${lan_ranges[@]}"; do
       expected="-A $TAG -d $net -j RETURN"
