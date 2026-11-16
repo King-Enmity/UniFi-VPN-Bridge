@@ -47,6 +47,14 @@ There are two supported workflows for the current **read-only diagnostics**:
 **Important:** The wizard does *not* configure VPN-to-VPN forwarding, install firewall rules, provide a kill switch, or protect internet traffic. Automatic live setup is a future feature that requires real hardware validation before release. This wizard is on `development` only, not the stable `main` branch.
 
 
+## Hardware-observed fwmark bridge (development field notes)
+
+A UDM Pro field test confirmed that a remote WireGuard server client can reach the internet through an existing UniFi-managed outbound OpenVPN VPN client by marking inbound IPv4 packets with **UniFi's own outbound VPN fwmark**, with narrowly scoped source NAT. A same-connection packet capture verified return traffic through both tunnels. An unmarked connection previously exited the normal WAN even though a separate-table route lookup appeared correct.
+
+Read the **[sanitized manual proof-of-concept and rollback guide](docs/VERIFIED_FWMARK_WIREGUARD_POC.md)**. This records the method as a **manual, temporary, development-only experiment**; it includes no personal WAN, LAN, peer, or VPN endpoint addresses or credentials. It does **not** establish a complete kill switch, DNS/IPv6 protection, automatic recovery, or reboot persistence.
+
+**Do not confuse this field-tested method with the older unvalidated `bin/bridge-engine.py` prototype**: the prototype's existing early source-policy fallback may take precedence over UniFi's VPN mark policy on some devices. Do not run it on a working production gateway.
+
 ## Experimental routing implementation (development ONLY)
 
 **NEW v0.3 proof-of-concept:** `bin/bridge-engine.py` provides an experimental IPv4 VPN-to-VPN routing and DNS policy engine, with explicit LAN exceptions, a forwarding drop guard, a kernel source-route fallback, staged A/B firewall chains, and optional watchdog/systemd boot recovery.
