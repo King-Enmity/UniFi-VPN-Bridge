@@ -203,3 +203,24 @@ iptables -w -X UVB_KILLSWITCH
 ```
 
 Always inspect existing rules first and remove **only** rules this project installed. Do not flush UniFi-managed chains. This section is field documentation, not a reboot-persistent or fully tested installer.
+
+
+## Follow-up field observation: DNS and IPv6 reconnaissance
+
+The same UDM Pro test confirmed that remote WireGuard clients **continued to reach local LAN resources with the IPv4 forwarding guard active**.
+
+Further read-only inspection found:
+- The incoming WireGuard server interface had **no configured IPv6 address**, while global IPv6 forwarding was enabled.
+- The IPv6 FORWARD policy was not independently locked down for the incoming VPN interface.
+- The remote WireGuard client sent conventional DNS requests to the **router's own VPN-interface address** on port 53, and the router answered them.
+- This capture alone **does not establish the route used for the router's upstream DNS lookups**. The forwarded IPv4 fwmark does not automatically govern the router's own DNS traffic.
+
+**Unverified:** external IPv6 bypass from a remote phone/laptop; router-originated DNS egress; browser DNS-over-HTTPS; DNS behavior after VPN loss; local hostname resolution under alternate DNS. Never claim full DNS/IPv6 leak prevention from IPv4 route or packet counters alone.
+
+Recommended next **manual** validation:
+1. Set the *remote WireGuard client profile* to a trusted DNS resolver reachable through the intended outbound VPN, without globally changing UniFi's DNS for LAN users. Test external DNS over the intended VPN. Note that private DNS hostnames may require a separately designed split-DNS policy.
+2. Apply an ingress-interface-specific **IPv6 FORWARD reject** as a temporary extra guard, but understand it cannot prevent IPv6 traffic that the remote device chooses to send **outside its WireGuard tunnel**. Test remote client IPv6 routing and leak websites separately.
+3. Verify DNS paths with simultaneous interface captures and unique fresh DNS queries. Avoid publishing capture logs containing public/private IPs or identifying hostnames.
+4. Keep IPv4 forwarding guard and mark/NAT rules unchanged while testing. Add reboot persistence only after independent disconnect, firewall-reload and rejoin tests.
+
+Do not disable system-wide IPv6 forwarding or overwrite global DNS configuration just to protect one VPN profile. More complete leak guarantees require client-side full-tunnel IPv6 policy and explicit upstream/resolver design.
