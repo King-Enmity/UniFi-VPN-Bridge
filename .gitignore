@@ -2,3 +2,12 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .venv/
+
+# Never commit actual gateway configuration or private router information.
+bridge.env
+*.env.local
+*.secret
+*.secrets
+*.key
+*.pem
+*.conf.private
