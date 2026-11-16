@@ -1,4 +1,4 @@
-name: Read-only diagnostic checks
+name: VPN bridge validation
 on:
   push:
     branches: [main, coming-soon, development]
@@ -10,7 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Bash syntax
-        run: bash -n bin/unifi-vpn-bridge
-      - name: Offline tests
+      - name: Check syntax of the shipped watchdog and read-only diagnostic
+        run: |
+          bash -n scripts/bridge-watch.sh
+          bash -n bin/unifi-vpn-bridge
+      - name: Ensure template has no actual network installation values
+        run: |
+          grep -q '^WG_IF=REPLACE_' examples/bridge.env.example
+          grep -q '^VPN_IF=REPLACE_' examples/bridge.env.example
+          grep -q '^WG_CIDR=REPLACE_' examples/bridge.env.example
+          grep -q '^LAN_EXEMPTIONS="REPLACE_' examples/bridge.env.example
+      - name: Verify offline diagnostic tests
         run: python3 -m unittest discover -s tests -v
