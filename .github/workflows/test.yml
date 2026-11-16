@@ -12,5 +12,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Bash syntax
         run: bash -n bin/unifi-vpn-bridge
+      - name: Experimental engine syntax
+        run: python3 -m py_compile bin/bridge-engine.py
       - name: Offline tests
         run: python3 -m unittest discover -s tests -v
