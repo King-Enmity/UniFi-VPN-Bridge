@@ -179,6 +179,29 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(args[:4] == ("ip", "-4", "rule", "add") for args in writes))
         self.assertTrue(sync.called)
 
+    def test_hook_position_ignores_builtin_policy_line(self):
+        class HookFake:
+            def read(self, *argv, **kwargs):
+                return ('-P FORWARD ACCEPT\n'
+                        '-A FORWARD -m comment --comment unifivpnbridge -j UVB_FWD_A\n')
+        hooks = bridge._hooks(HookFake(), "iptables", "filter", "FORWARD", "UVB_FWD")
+        self.assertEqual(1, len(hooks))
+        self.assertEqual(0, hooks[0][2])
+
+    def test_idempotent_chain_does_not_rewrite(self):
+        expected = [["-i", "tlprt0", "-j", "DROP"]]
+        class Existing:
+            def read(self, *argv, **kwargs):
+                if argv[-1] == "FORWARD":
+                    return ("-P FORWARD ACCEPT\n"
+                            "-A FORWARD -m comment --comment unifivpnbridge -j UVB_FWD_A\n")
+                if argv[-1] == "UVB_FWD_A":
+                    return "-N UVB_FWD_A\n-A UVB_FWD_A -i tlprt0 -j DROP\n"
+                return ""
+            def write(self, *argv):
+                raise AssertionError(f"no firewall mutations expected: {argv}")
+        bridge.sync_chain(Existing(), "iptables", "filter", "FORWARD", "UVB_FWD", expected)
+
     def test_all_mutations_use_argv_not_shell(self):
         source = MODULE.read_text(encoding="utf-8")
         self.assertNotIn("shell=True", source)
