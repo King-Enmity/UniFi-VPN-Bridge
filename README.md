@@ -16,7 +16,7 @@ UniFi WireGuard SERVER on your gateway
 
 ## Start here
 
-**[Manual command-line setup guide →](docs/SETUP.md)**
+**New to UniFi interface names? Start with [Find your VPN server, VPN client, and fwmark](docs/FIND_YOUR_VPN.md), then follow the [manual command-line setup guide](docs/SETUP.md).**
 
 The guide explains what you must fill in, how to install from SSH (including on gateways without `nano`), how to test before starting a service, how to verify after reboot, and how to back out safely.
 
