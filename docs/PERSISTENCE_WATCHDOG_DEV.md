@@ -77,3 +77,18 @@ The watchdog now supplies its hook matcher with the canonical printed order. **D
 ### Follow-up verified result: idempotent one-time reconciliation
 
 On the same field-test UDM Pro, the corrected watchdog successfully completed two consecutive `once` invocations. After the first run, an inspection of `mangle/PREROUTING` and `filter/FORWARD` showed exactly one hook to each of `UVB_NORD` and `UVB_KILLSWITCH`. After the second run, both hook counts remained **one**. This validates the duplicate-hook fix in the observed configuration; it **does not** validate the later continuous service, a real reboot, firewall reprovisioning, WAN failover, tunnel loss, IPv6 privacy, or router-forwarded DNS behavior.
+
+
+### Field test: normal reboot persistence verified (2026-11-16)
+
+A UDM Pro tester rebooted after enabling the `uvb-bridge.service` systemd unit. In the restarted system:
+
+- `systemctl is-enabled uvb-bridge.service` returned `enabled`.
+- `systemctl is-active uvb-bridge.service` returned `active`.
+- The current-boot journal recorded watchdog startup and an initial message that the unique UniFi outbound VPN fwmark route was not yet available; the watchdog reported retaining its guards instead of selecting an alternate path.
+- Later firewall inspection found the scoped incoming WireGuard `mangle/PREROUTING` hook, the scoped IPv4 `filter/FORWARD` kill-switch hook, the outbound VPN `nat/POSTROUTING MASQUERADE` rule, and the incoming WireGuard `ip6tables/FORWARD` REJECT rule.
+- The tester reported that remote VPN access still worked after the reboot.
+
+This supports **service and rule recovery after a normal reboot on the tested gateway**. It is *not* proof of uninterrupted fail-closed enforcement during the window before the watchdog starts, nor independently captured WAN leak absence under tunnel loss, firmware-update persistence, automatic policy-mark-change recovery, or router-originated upstream DNS privacy. Avoid extrapolating to other gateways or firmware.
+
+No site identifiers, real IP addresses, VPN mark values, public DNS queries, or hostnames from the field test have been included.
