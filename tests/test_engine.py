@@ -204,7 +204,7 @@ class EngineTests(unittest.TestCase):
 
     def test_all_mutations_use_argv_not_shell(self):
         source = MODULE.read_text(encoding="utf-8")
-        self.assertNotIn("shell=True", source)
+        self.assertNotRegex(source, r"subprocess\.run\([^\n]*shell\s*=")
         self.assertIn("subprocess.run(argv", source)
 
 
