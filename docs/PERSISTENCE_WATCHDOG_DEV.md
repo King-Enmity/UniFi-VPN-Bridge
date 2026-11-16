@@ -67,3 +67,9 @@ Before clearing firewall rules, disconnect remote clients. Inspect the rules and
 The systemd unit lives under `/etc/systemd/system`, whereas project script/config live under `/data`. A normal reboot generally preserves an enabled systemd unit on UniFi OS 4.x/5.x, but UniFi firmware upgrades may replace or disable custom units. Verify after **every firmware update**. An optional third-party on-boot helper such as `unifi-utilities/unifi-common` can restore units from `/data/on_boot.d`, but that requires separately reviewing and installing trusted third-party code. This project does **not** silently download or install such a helper.
 
 This implementation remains **development**, not `coming-soon` or `main`, until all of the disconnect/reconnect, DNS, IPv6, failover, firewall-reprovision and upgrade checks are recorded.
+
+## 2026-11-16 field test: duplicate hook regression and fix
+
+The first `once` test on a UDM Pro completed, and confirmed the existing scoped NAT and IPv6 forward reject. However, it also revealed **duplicate** `mangle/PREROUTING → UVB_NORD` and `filter/FORWARD → UVB_KILLSWITCH` jump rules. The watchdog's `ensure_hook_first` compared argument strings in `-i IFACE -s CIDR` order while `iptables -S` prints `-s CIDR -i IFACE`. It therefore added a new rule without recognizing the existing first rule.
+
+The watchdog now supplies its hook matcher with the canonical printed order. **Do not enable the looping service with earlier revisions.** Test `doctor`, then `once` twice and verify that the matching hook count remains exactly **one** for each chain. Existing duplicate exact hooks should be removed in a guarded first reconciliation. Verify no unrelated UniFi chains have been modified. The revised watchdog still requires real reboot, reconnect and privacy tests.
