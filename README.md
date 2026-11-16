@@ -46,6 +46,18 @@ There are two supported workflows for the current **read-only diagnostics**:
 
 **Important:** The wizard does *not* configure VPN-to-VPN forwarding, install firewall rules, provide a kill switch, or protect internet traffic. Automatic live setup is a future feature that requires real hardware validation before release. This wizard is on `development` only, not the stable `main` branch.
 
+
+## Experimental routing implementation (development ONLY)
+
+**NEW v0.3 proof-of-concept:** `bin/bridge-engine.py` provides an experimental IPv4 VPN-to-VPN routing and DNS policy engine, with explicit LAN exceptions, a forwarding drop guard, a kernel source-route fallback, staged A/B firewall chains, and optional watchdog/systemd boot recovery.
+
+- **Read the [experimental engine safety notes](docs/EXPERIMENTAL_ENGINE.md) first.** This code has not been validated on physical UniFi hardware and may interrupt routing or cause traffic leaks during firewall reloads.
+- **Review [example JSON configuration](examples/config.experimental.json)**: sample subnets, devices and DNS servers are illustrative, not install-ready.
+- Only an explicitly marked `--experimental` invocation can change firewall or service state. Do **not** run `apply`, `watch` or `install-service` on a production router.
+- `main` and `coming-soon` do **not** contain this experimental implementation. They remain read-only.
+
+**Not yet solved:** device/firmware compatibility, independent packet-level verification, encrypted DNS behavior, genuinely atomic UniFi firewall reload handling, guaranteed reboot persistence, automatic rollback and safe production installation.
+
 ## Examples
 
 Run from the repository directory on a laptop. SSH authenticates to your gateway; the script itself has no outbound network calls and is streamed to Bash without being installed. Replace `192.168.1.1` and ALL interface names with those verified on your device.
