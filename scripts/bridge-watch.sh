@@ -5,6 +5,11 @@
 # Configure BOTH VPNs through UniFi first; this only controls forwarding.
 #
 # USER INPUTS: create a private /data/unifi-vpn-bridge/bridge.env file:
+# How to discover the correct interface names and policy mark:
+# docs/FIND_YOUR_VPN.md, using 'ip -4 addr', 'ip -4 rule' and 'ip -4 route'.
+# UniFi's friendly VPN name is NOT necessarily the Linux interface name.
+# The mark VALUE/MASK is discovered from the selected outbound VPN's existing
+# UniFi routing table; it is NOT a value the user should fill in or hardcode.
 # WG_IF: ingress WireGuard SERVER interface (check: ip -o link show)
 # WG_CIDR: exact incoming WireGuard clients' IPv4 NETWORK/CIDR
 # VPN_IF: outgoing UniFi VPN CLIENT interface (already connected)
