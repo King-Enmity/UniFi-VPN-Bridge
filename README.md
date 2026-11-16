@@ -1,96 +1,77 @@
 # UniFi VPN Bridge
 
-> **Access your home network remotely. Browse through your commercial VPN.**
->
-> Fixing a VPN-routing limitation that UniFi users still need addressed: remote Teleport, WireGuard, and OpenVPN users should be able to access local resources while their internet traffic exits through a commercial VPN such as NordVPN, Proton VPN, or Mullvad.
->
-> **Current release scope:** read-only routing diagnostics only. No live VPN bridging or kill switch is implemented yet.
+**Remote access to your LAN, internet browsing through your commercial VPN.**
 
-### Release channels
+UniFi can host a WireGuard VPN server and connect to a commercial VPN, but routing **remote VPN server clients into an outbound VPN client** does not automatically work through ordinary VPN-client policy routing on the tested UDM Pro. **UniFi VPN Bridge fills that forwarding gap** using UniFi's existing `fwmark` route instead of replacing UniFi's default routes.
+
+```text
+Remote phone/laptop
+       │ full-tunnel IPv4 WireGuard connection
+       ▼
+UniFi WireGuard SERVER on your gateway
+       ├── local LAN destinations ──► your normal local routes and UniFi ACLs
+       └── internet destinations ───► UniFi VPN CLIENT ──► commercial VPN provider
+                                         (tested with outbound OpenVPN)
+```
+
+## Start here
+
+**[Manual command-line setup guide →](docs/SETUP.md)**
+
+The guide explains what you must fill in, how to install from SSH (including on gateways without `nano`), how to test before starting a service, how to verify after reboot, and how to back out safely.
+
+- [Explained watchdog script](scripts/bridge-watch.sh): uses the current UniFi-owned outgoing VPN policy mark; sets scoped IPv4 forwarding, NAT, an IPv4 forwarding kill switch, and an incoming-WireGuard IPv6 forwarding guard.
+- [Configuration template](examples/bridge.env.example): contains **only placeholders**, never IPs, hostnames, or keys from a real installation.
+- [Systemd service](systemd/uvb-bridge.service): runs the watchdog on boot and periodically checks for missing/reordered project rules.
+- [How the routing works](docs/HOW_IT_WORKS.md) and [known limitations](SECURITY.md).
+- [Future roadmap](ROADMAP.md).
+- Existing [read-only diagnostic CLI](bin/unifi-vpn-bridge) is optional; it is **not** an installer.
+
+## Tested today — scope matters
+
+On **one UDM Pro** with incoming UniFi **WireGuard Server** and outgoing UniFi **OpenVPN Client** to a commercial VPN, field testing confirmed:
+
+| Feature | Result |
+|---|---|
+| Forwarding a remote WireGuard client's IPv4 HTTPS traffic through the outbound VPN | Confirmed with real packet captures and replies |
+| Scoped outbound VPN MASQUERADE | Confirmed |
+| LAN resource access while the forwarding guard is on | Confirmed |
+| Rejecting non-approved forwarded IPv4 paths using a source/interface-scoped guard | Confirmed in the observed test |
+| Discovering the current UniFi outbound `fwmark` without hardcoding it | Confirmed |
+| Repeated reconciliation without accumulating duplicate hooks | Confirmed (the original duplicate-hook bug was fixed) |
+| Service starting after an ordinary router reboot and restoring firewall hooks | Confirmed |
+| Full end-to-end leak-free operation during *all* failures | **Not established** |
+
+**Important:** This is the simplest **tested** workflow for this particular combination, **not** a general-purpose or zero-leak-guaranteed VPN router. The restored service is only as reliable as the local UniFi OS environment; firmware updates may affect custom services.
+
+## Before you install
+
+You need a UniFi gateway with root SSH access and `bash`, `ip`, `iptables`, `ip6tables`, and `systemd`; an already configured UniFi incoming WireGuard server; an already connected UniFi outbound VPN client with an identifiable `fwmark` route; and local/admin access to recover your router if something goes wrong.
+
+Configure your remote WireGuard device as a **full-tunnel IPv4** client for web browsing (`AllowedIPs = 0.0.0.0/0`). Local split-tunnel browser traffic never reaches this bridge.
+
+The script supports operator-supplied interfaces, not auto-detection of your VPN server, and targets **one WireGuard server subnet and one outbound VPN client** per installation. The code does not create VPN accounts, modify UniFi-managed policy tables, or ask for VPN credentials.
+
+## Privacy and safety limitations
+
+- **Router DNS:** If a remote WireGuard client uses the router for DNS, the router's own upstream queries might still exit via the WAN. The forwarding kill switch does **not** cover router-originated DNS. DNS leak protection and split DNS are roadmap items.
+- **Boot gap:** Before systemd starts the watchdog or during UniFi firewall reprovisioning there can be an interval without custom protections. Do not claim uninterrupted or zero-leak enforcement.
+- **IPv6:** The script rejects forwarded IPv6 arriving on the selected WireGuard interface. It cannot prevent a remote client from using its separate local IPv6 connection.
+- **Allow rules:** `RETURN` to the outbound VPN or local bridge means continue processing UniFi firewall rules; the script does not grant blanket LAN access. `br+` matches bridge interface names, so administrators must review their actual topology.
+- **Other traffic:** WAN failover, hardware offload, tunnel-down conditions, changed UniFi versions, multiple VPNs, incoming Teleport/OpenVPN, and outbound WireGuard clients **have not received the same complete field validation**.
+
+Keep local configuration under `/data/unifi-vpn-bridge/bridge.env` with permissions `0600`. **Never commit actual local addresses, endpoints, secrets or diagnostic dumps to GitHub.**
+
+## Release channels
 
 | Branch | Meaning |
 |---|---|
-| [main](../../tree/main) | Stable, reviewed functionality (currently diagnostics only) |
-| [coming-soon](../../tree/coming-soon) | Working changes that still need more testing |
-| [development](../../tree/development) | Active builds and experiments; may break |
+| [main](../../tree/main) | Minimal, documented hardware-observed WireGuard-to-OpenVPN-client method; explicit safety limits |
+| [coming-soon](../../tree/coming-soon) | Preview work, not automatically promoted |
+| [development](../../tree/development) | Experimental implementations and unverified features; not part of this release |
 
-Promote changes **development → coming-soon → main** after appropriate testing. See [BRANCHES.md](BRANCHES.md).
-
-
-**v0.2.0: read-only three-protocol discovery. Not yet a VPN router, leak guard, or installer.**
-
-An independent, security-first UniFi routing project. It is designed to eventually steer traffic from **Teleport**, **WireGuard VPN Server**, and **OpenVPN VPN Server** through one or more UniFi-managed outbound **WireGuard VPN Clients** or **OpenVPN VPN Clients**.
-
-v0.2 has a CLI for *declaring* one or several ingress profiles and discovering existing UniFi-managed IPv4 fwmark policy rules for the selected outbound VPN interface(s). It cannot yet steer, NAT, forward, protect or block any packets. Nothing it prints is proof of leak protection. **No untrusted original-project code is bundled.**
-
-## What is supported now
-
-- Incoming VPN types: `teleport`, `wireguard`, `openvpn` (explicit type + existing network interface).
-- Outgoing VPN: any explicitly chosen existing UniFi-managed WireGuard or OpenVPN **client** interface with a uniquely matching unscoped IPv4 fwmark rule and a single default route to that interface.
-- Multiple incoming VPN profiles may share one outgoing VPN or use independent outgoing VPNs.
-- Validates inputs, confirms interface existence, identifies ambiguous candidate marks and refuses to guess.
-- `doctor` and `plan` are **read only**. The latter prints the proposed engineering stages, not shell mutation commands.
-- Does **not** read VPN keys, credentials or VPN config files, talk to remote hosts, download software, write firewall rules, or install a service.
-
-**Not yet implemented:** actually routing VPN clients, source NAT, kill switch, DNS control, IPv6 policy, live tunnel verification, boot persistence, interface auto-discovery, hardware compatibility testing.
-
-## Examples
-
-Run from the repository directory on a laptop. SSH authenticates to your gateway; the script itself has no outbound network calls and is streamed to Bash without being installed. Replace `192.168.1.1` and ALL interface names with those verified on your device.
-
-First inspect available interfaces on the gateway:
-
-```sh
-ssh root@192.168.1.1 'ip -o link show'
-```
-
-### All three incoming VPNs, one outbound OpenVPN client
-
-```sh
-ssh root@192.168.1.1 \
- 'bash -s -- doctor --ingress teleport:tlprt0 --ingress wireguard:wgsrv1 --ingress openvpn:tun0 --egress tunovpnc1' \
- < bin/unifi-vpn-bridge
-```
-
-### Three incoming VPNs, different outgoing clients
-
-```sh
-ssh root@192.168.1.1 \
- 'bash -s -- doctor --route teleport:tlprt0:tunovpnc1 --route wireguard:wgsrv1:wgclt4 --route openvpn:tun0:wgclt4' \
- < bin/unifi-vpn-bridge
-```
-
-Here `tun0`, `tlprt0`, `wgsrv1`, `tunovpnc1`, and `wgclt4` are **illustrative**, not guaranteed interface names. Actual names, especially for incoming OpenVPN, depend on gateway and firmware; the scanner will reject missing interfaces. `--route` accepts one incoming server profile and one outbound client interface per option. For a proposed (non-executed) engineering plan, replace `doctor` with `plan`.
-
-Backward-compatible v0.1 syntax:
-
-```sh
-ssh root@192.168.1.1 'bash -s -- doctor --source tlprt0 --egress wgclt4' < bin/unifi-vpn-bridge
-```
-
-## How to test offline
-
-```sh
-bash -n bin/unifi-vpn-bridge
-python3 -m unittest discover -s tests -v
-```
-
-All test gateway calls use stubbed `ip` commands in a temporary folder. The test suite itself makes no firewall changes. None of these tests demonstrates real packet routing or prevents leaks.
-
-## Security
-
-This is strictly an inspection tool. The only runtime external executable needed is `ip` (plus `awk` and standard shell utilities). Inputs and route-table identifiers are validated; there is no `source`, `eval`, `curl | bash`, telemetry, external dependency installer, persistence, or automatic update. See [SECURITY.md](SECURITY.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
-
-A safe future mutation engine will need validated firmware-specific firewall precedence, ingress source mapping, A/B staged rule swaps, an already-installed fail-closed guard, constrained SNAT, explicit IPv6 and DNS decisions, packet-level disconnect tests and rollback before any production release.
-
-## Official UniFi references
-
-- [Teleport VPN](https://help.ui.com/hc/en-us/articles/5246403561495-UniFi-Gateway-Teleport-VPN)
-- [WireGuard VPN Server](https://help.ui.com/hc/en-us/articles/115005445768-UniFi-Gateway-WireGuard-VPN-Server)
-- [OpenVPN Server](https://help.ui.com/hc/en-us/articles/12600064355991-UniFi-Gateway-OpenVPN-Server)
-- [WireGuard VPN Client](https://help.ui.com/hc/en-us/articles/16357883221015-UniFi-Gateway-WireGuard-VPN-Client)
-- [OpenVPN Client](https://help.ui.com/hc/en-us/articles/12648654915863-UniFi-Gateway-OpenVPN-Client)
+See [BRANCHES.md](BRANCHES.md). **Future features are plans, not advertised as working.**
 
 ## License
 
-MIT. Independent community project, not endorsed by or affiliated with Ubiquiti.
+MIT. Independent community project; not affiliated with or endorsed by Ubiquiti or VPN providers.
