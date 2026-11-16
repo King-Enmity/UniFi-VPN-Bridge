@@ -1,0 +1,29 @@
+{
+  "watch_interval": 30,
+  "profiles": [
+    {
+      "type": "teleport",
+      "ingress": "tlprt0",
+      "source_cidr": "10.20.30.0/24",
+      "egress": "wgclt4",
+      "lan_cidrs": ["192.168.1.0/24", "192.168.5.0/24"],
+      "dns_ipv4": "1.1.1.1"
+    },
+    {
+      "type": "wireguard",
+      "ingress": "wgsrv1",
+      "source_cidr": "10.30.40.0/24",
+      "egress": "tunovpnc1",
+      "lan_cidrs": ["192.168.1.0/24"],
+      "dns_ipv4": "9.9.9.9"
+    },
+    {
+      "type": "openvpn",
+      "ingress": "tun0",
+      "source_cidr": "10.40.50.0/24",
+      "egress": "wgclt4",
+      "lan_cidrs": ["192.168.1.0/24"],
+      "dns_ipv4": "1.1.1.1"
+    }
+  ]
+}
