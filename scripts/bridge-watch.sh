@@ -79,6 +79,8 @@ ensure_chain() {
 ensure_hook_first() {
   local table=$1 builtin=$2; shift 2
   local -a args=("$@")
+  # iptables -S canonicalizes the match order (source before input interface).
+  # Callers must pass args in this order to avoid repeated hook insertion.
   local want="-A $builtin"
   local a
   for a in "${args[@]}"; do want+=" $a"; done
@@ -111,7 +113,7 @@ ensure_ipv4_guard() {
   [[ ${guard_rules[0]} == "-A $GUARD -o $VPN_IF -j RETURN" ]] || fail 'unexpected VPN allow rule'
   [[ ${guard_rules[1]} == "-A $GUARD -o br+ -j RETURN" ]] || fail 'unexpected LAN allow rule'
   [[ ${guard_rules[2]} == "-A $GUARD -j REJECT" || ${guard_rules[2]} == "-A $GUARD -j REJECT --reject-with icmp-port-unreachable" ]] || fail 'unexpected catchall reject rule'
-  ensure_hook_first filter FORWARD -i "$WG_IF" -s "$WG_CIDR" -j "$GUARD"
+  ensure_hook_first filter FORWARD -s "$WG_CIDR" -i "$WG_IF" -j "$GUARD"
 }
 
 ensure_ipv6_guard() {
@@ -166,7 +168,7 @@ ensure_mark_chain() {
       iptables -w -t mangle -R "$TAG" 7 -j CONNMARK --save-mark --nfmask "$mask" --ctmask "$mask"
     fi
   fi
-  ensure_hook_first mangle PREROUTING -i "$WG_IF" -s "$WG_CIDR" -j "$TAG"
+  ensure_hook_first mangle PREROUTING -s "$WG_CIDR" -i "$WG_IF" -j "$TAG"
 }
 
 reconcile() {
