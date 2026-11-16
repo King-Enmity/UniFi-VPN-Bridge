@@ -1,33 +1,31 @@
 # Release channels
 
-UniFi VPN Bridge uses three long-lived branches.
+We keep three branches to separate what has actually been tested from experiments.
 
-| Branch | Release channel | Requirements |
+| Branch | Purpose | What to expect |
 |---|---|---|
-| `main` | Stable / safe to use | Only functionality tested to a release-quality standard. At present this means **read-only diagnostics only**. No VPN forwarding or leak protection is offered. |
-| `coming-soon` | Preview / beta | Features that work in limited testing but lack complete real-hardware and failure-mode validation. **Not safe to rely on for privacy.** |
-| `development` | Active development | Experiments, new features, unfinished work, and breaking changes. **Never deploy on a production gateway.** |
+| **main** | Smallest tested working path | Incoming UniFi WireGuard Server → UniFi outbound OpenVPN VPN Client using its existing mark, scoped NAT and forwarding guard, plus watchdog/reboot recovery tested on one UDM Pro |
+| **coming-soon** | Preview | Features that may work but need additional verification; do not depend on them for privacy |
+| **development** | Active experiments | Incomplete engines, exploratory integrations, prototyping, and potentially disruptive changes |
 
-## Development flow
+A **working example on one router is not a guarantee** across all UniFi OS versions, firmware reloads, VPN types, DNS setups, or failure scenarios. Read [SECURITY.md](SECURITY.md) before treating main as suitable for your environment.
 
-1. Build and unit-test new work in `development`.
-2. Open a pull request from `development` into `coming-soon` after basic checks pass.
-3. Validate on supported UniFi devices, including Teleport, WireGuard Server, OpenVPN Server, outbound VPNs, DNS, IPv6, disconnects, reboots and firewall reloads.
-4. Only merge `coming-soon` into `main` when the applicable release checklist is complete.
-5. Use review, automated tests and branch rules to protect `main`.
+## Release process
 
-## Stability is feature-scoped
+1. Propose code and documentation in `development`.
+2. Review and test in `coming-soon` where appropriate.
+3. Promote to `main` only the smallest feature set supported by real testing, with explicit known limitations.
+4. Preserve the simple manual command-line walkthrough and a reversible method.
+5. Keep private router IPs, hostnames, WAN endpoints, provider credentials, SSH keys and unredacted logs **out of all branches**.
 
-The v0.2 discovery CLI is designed to only *read* information: it never changes firewall rules or starts routing. This does **not** mean the planned VPN bridge is ready. It is not.
+## Main's actual scope
 
-Do not label the project "production-ready" or claim "no leaks" until packet-level tests cover failure states on real supported hardware. No workflow should auto-deploy to a UniFi gateway.
+- Tested: remote WireGuard IPv4 clients forwarded through an already connected UniFi OpenVPN client on one UDM Pro.
+- Observed: scoped NAT, LAN access, IPv4 forwarding kill switch behavior, IPv6 ingress-forward guard, automatic firewall mark discovery, idempotent watchdog, normal reboot service recovery.
+- **Not proven:** complete router-originated DNS protection, leak-free early boot, every VPN outage, WAN failover, all hardware offload paths, all firmware, Teleport/OpenVPN incoming servers, outgoing WireGuard clients.
 
-## Recommended GitHub rules
+See [ROADMAP.md](ROADMAP.md) for ideas that are **not** currently shipped.
 
-Configure in GitHub Settings → Rules → Rulesets (or Branch protection):
-- `main`: require pull request reviews and passing `test` status; block force pushes and deletions.
-- `coming-soon`: require passing tests and pull requests; block force pushes.
-- `development`: require passing tests for merges, permit work-in-progress commits.
-- Consider signed commits and CODEOWNERS after contributors join.
+## Suggested branch protections
 
-These rules are **recommendations** until configured in GitHub; creating the branches alone does not enforce them.
+Configure GitHub Rulesets to require reviews and CI checks before merging into `main`, disallow force pushes, and review changes touching privileged firewall scripts.
