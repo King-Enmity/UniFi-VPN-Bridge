@@ -238,13 +238,16 @@ def _hooks(runner: Runner, binary: str, table: str, builtin: str, base: str):
     lines = runner.read(binary, "-t", table, "-S", builtin)
     refs = []
     expected_tag = "unifivpnbridge"
-    for i, line in enumerate(lines.splitlines()):
+    rule_position = 0
+    for line in lines.splitlines():
         try:
             tokens = shlex.split(line)
         except ValueError as error:
             raise BridgeError("unable to parse firewall listing") from error
         if not tokens or tokens[:2] != ["-A", builtin]:
             continue
+        position = rule_position
+        rule_position += 1
         if "--comment" not in tokens or "-j" not in tokens:
             continue
         if tokens[tokens.index("--comment") + 1] != expected_tag:
@@ -252,7 +255,7 @@ def _hooks(runner: Runner, binary: str, table: str, builtin: str, base: str):
         jump = tokens[tokens.index("-j") + 1]
         if jump not in (base + "_A", base + "_B"):
             continue
-        refs.append((jump, tokens[2:], i))
+        refs.append((jump, tokens[2:], position))
     return refs
 
 
