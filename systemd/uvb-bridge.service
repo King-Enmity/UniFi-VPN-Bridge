@@ -1,0 +1,23 @@
+[Unit]
+# This is a generic example: no network names or addresses belong here.
+Description=UniFi VPN Bridge - WireGuard-to-VPN forwarding watchdog
+# Start after the router's network stack is initializing. This DOES NOT
+# guarantee that the provider VPN is connected yet, or remove an early boot gap.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Shell script stays in foreground; systemd watches/restarts the process.
+Type=simple
+# USER ACTION: copy and edit examples/bridge.env.example on the ROUTER
+# at this path; the file must be owned by root and set to mode 0600.
+EnvironmentFile=/data/unifi-vpn-bridge/bridge.env
+# USER ACTION: copy scripts/bridge-watch.sh locally to the same pathname.
+# 'watch' runs the guard-first reconciliation loop every UVB_INTERVAL seconds.
+ExecStart=/bin/bash /data/unifi-vpn-bridge/bridge-watch.sh watch
+Restart=always
+RestartSec=5
+
+[Install]
+# Make systemd launch the service after normal boot target.
+WantedBy=multi-user.target
