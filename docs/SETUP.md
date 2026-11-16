@@ -16,6 +16,8 @@ The remote client must route internet IPv4 through its incoming WireGuard connec
 
 ## 1 — Locate the two VPN interfaces and the client subnet
 
+**Detailed walkthrough:** [Find your VPN server interface, VPN client interface, client subnet, local routes and firewall mark](FIND_YOUR_VPN.md). It explains how to distinguish the friendly UniFi VPN name from a Linux interface name, find the `fwmark`, and choose values for `bridge.env` without guessing.
+
 In your router's SSH session, run these **read-only** commands:
 
 ```bash
