@@ -55,6 +55,12 @@ Read the **[sanitized manual proof-of-concept and rollback guide](docs/VERIFIED_
 
 **Do not confuse this field-tested method with the older unvalidated `bin/bridge-engine.py` prototype**: the prototype's existing early source-policy fallback may take precedence over UniFi's VPN mark policy on some devices. Do not run it on a working production gateway.
 
+## Experimental persistence watchdog (development ONLY)
+
+A **new, not yet hardware-tested** [fwmark watchdog](scripts/bridge-watch.sh), [local configuration template](examples/bridge.env.example), and [systemd unit](systemd/uvb-bridge.service) are available with the [installation, validation and rollback guide](docs/PERSISTENCE_WATCHDOG_DEV.md). The service is designed to reconcile the previously tested WireGuard→UniFi VPN-client firewall mark, scoped source NAT, IPv4 forwarding guard and IPv6 forwarded-traffic block after startup or configuration reload, without editing UniFi's own routing tables.
+
+**Do not treat this as a verified leak-proof or reboot-tested installation.** Router-originated upstream DNS, brief exposure windows during boot/firewall rebuilds, firmware-upgrade persistence, and VPN-failure behavior remain to be validated. Keep live gateway-specific values only in the root-owned local config under `/data`, never in public GitHub files. Existing experimental `bin/bridge-engine.py` is a distinct, unvalidated prototype and is not used by this watchdog.
+
 ## Experimental routing implementation (development ONLY)
 
 **NEW v0.3 proof-of-concept:** `bin/bridge-engine.py` provides an experimental IPv4 VPN-to-VPN routing and DNS policy engine, with explicit LAN exceptions, a forwarding drop guard, a kernel source-route fallback, staged A/B firewall chains, and optional watchdog/systemd boot recovery.
