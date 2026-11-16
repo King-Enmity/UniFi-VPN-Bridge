@@ -38,6 +38,10 @@ Remote WireGuard client (IPv4 full tunnel)
 6. **IPv6:** a separate scoped `ip6tables/FORWARD` rule rejects forwarded IPv6 arriving via the selected WireGuard server, rather than globally disabling IPv6.
 7. **Reconciliation:** the systemd service starts the same script in a 15-second loop. It checks for missing/reordered project hooks, discovers the current UniFi VPN mark, and retains the forwarding guards if the VPN policy is temporarily missing.
 
+## How to identify the correct interfaces and mark
+
+The operator configures `WG_IF`, `WG_CIDR`, `VPN_IF` and `LAN_EXEMPTIONS` in a **local, private** `bridge.env` file. The friendly name of a UniFi VPN in Network settings is *not* necessarily the Linux interface name. See [Find your VPN server, VPN client and fwmark](FIND_YOUR_VPN.md) for step-by-step read-only commands. The watchdog discovers the existing `fwmark` dynamically; **do not hardcode it in the script**.
+
 ## Why a route lookup is not enough
 
 During the hardware test, a custom source-route table appeared correct in `ip route get`, yet a real forwarded HTTPS flow was seen on the WAN. Actual packet capture established the working forwarded path only after applying UniFi's existing mark on the WireGuard ingress traffic.
